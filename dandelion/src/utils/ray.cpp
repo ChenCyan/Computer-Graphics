@@ -47,7 +47,6 @@ Ray generate_ray(int width, int height, int x, int y, Camera& camera, float dept
 
     Vector3f ray_origin = camera.position;
     Vector3f ray_direction = (pixel_world_space.head<3>() / pixel_world_space.w() - ray_origin).normalized();
-
     return {ray_origin, ray_direction};
 }
 
@@ -58,13 +57,47 @@ optional<Intersection> ray_triangle_intersect(const Ray& ray, const GL::Mesh& me
     (void)mesh;
     (void)index;
     // these lines above are just for compiling and can be deleted
-    Intersection result;
-    
-    if (result.t - infinity < -eps) {
-        return result;
-    } else {
-        return std::nullopt;
-    }
+    optional<Intersection> result;  // 存储最终的相交结果
+    float min_t_in_scoop = std::numeric_limits<float>::infinity(); // 初始化为正无穷，以找到最近的相交点
+
+        const auto& face = mesh.face(index);  // 获取第 index 个三角形面
+        Vector3f vertex_a = mesh.vertex(face[0]);
+        Vector3f vertex_b = mesh.vertex(face[1]);
+        Vector3f vertex_c = mesh.vertex(face[2]);
+        // 计算三角形面法向量
+        Vector3f normal = (vertex_b - vertex_a).cross(vertex_c - vertex_a).normalized();
+        if (normal.norm() < eps) return std::nullopt; // 如果法向量接近零，说明三角形无效
+        normal.normalize();
+        float normal_dot_dir = normal.dot(ray.direction);
+
+        // 检查光线是否与平面平行
+        if (std::abs(normal_dot_dir) < eps) return std::nullopt;
+
+        // 计算光线与平面相交的 t 值
+        float t = (vertex_a - ray.origin).dot(normal) / normal_dot_dir;
+        if (t < eps) return std::nullopt;
+
+        // 计算光线与平面的交点
+        Vector3f cross_point = ray.origin + t * ray.direction;
+
+        // 使用叉积法判断交点是否在三角形内部（逐边测试）
+        bool inside_triangle = 
+            normal.dot((vertex_b - vertex_a).cross(cross_point - vertex_a)) >= 0 &&
+            normal.dot((vertex_c - vertex_b).cross(cross_point - vertex_b)) >= 0 &&
+            normal.dot((vertex_a - vertex_c).cross(cross_point - vertex_c)) >= 0;
+        
+        // 如果交点在三角形内部且 t 为最近的相交距离，则更新结果
+        if (inside_triangle && t < min_t_in_scoop ) {
+            Intersection _result;
+            min_t_in_scoop = t;
+            _result.t = t;
+            _result.barycentric_coord = cross_point;
+            _result.normal = normal;
+        result = _result;
+        }
+
+    // 如果找到相交点，则返回相交结果，否则返回空
+    return (min_t_in_scoop < std::numeric_limits<float>::infinity()) ? result : std::nullopt;
 }
 
 optional<Intersection> naive_intersect(const Ray& ray, const GL::Mesh& mesh, const Matrix4f model)

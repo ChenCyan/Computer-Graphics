@@ -47,8 +47,19 @@ bool AABB::intersect(const Ray& ray, const Vector3f& inv_dir, const std::array<i
     (void)ray;
     (void)inv_dir;
     (void)dir_is_neg;
-    return true;
     // these lines above are just for compiling and can be deleted
+    float t_min = 0;
+    float t_max = std::numeric_limits<float>::max();
+    for (int i=0;i<3;i++)
+    {
+        float t0 = (p_min[i] - ray.origin[i])*inv_dir[i];
+        float t1 = (p_max[i] - ray.origin[i])*inv_dir[i];
+        if (!dir_is_neg[i]) std::swap(t0, t1);
+        t_max = std::min(t1, t_max); 
+        t_min = std::max(t0, t_min);
+        if (t_max <= t_min) return false;
+    }
+    return true;
 
 }
 // 获取当前图元对应AABB

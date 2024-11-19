@@ -124,6 +124,26 @@ void Object::update(vector<Object*>& all_objects)
 
             if (BVH_for_collision) {
                 //this switch is built for BVH;
+                BVH bvh(mesh);
+                bvh.build();
+                /*optional<Intersection> intersection = bvh.intersect(this_edge_ray,object->mesh,object->model());
+                if (intersection.has_value())
+                {
+                    if (intersection->t <= (this_point2 - this_point1).norm())
+                    {
+                    intersection.t = object->model()* intersection.t;
+                    intersection.barycentric_coord = object->model()*intersection.barycentric_coord;
+                    intersection.normal = object->model()*intersection.normal;
+                    intersection.
+                    next_state.position = current_state.position;
+
+                    float impulse = -2.0f * (next_state.velocity - object->velocity).dot(intersection->normal) / (1 / mass + 1 / object->mass);
+                    next_state.velocity = next_state.velocity + (impulse / this->mass) * intersection->normal;
+                    object->velocity = object->velocity - (impulse / object->mass) * intersection->normal;
+                    break;
+                }
+                }*/
+                break;
             } else {
                 //this switch is built for naive_intersect;
                 auto intersection = naive_intersect(this_edge_ray, object->mesh, object->model());
