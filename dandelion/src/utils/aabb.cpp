@@ -41,26 +41,36 @@ Vector3f AABB::centroid()
     return 0.5 * p_min + 0.5 * p_max;
 }
 // 判断当前射线是否与当前AABB相交
-bool AABB::intersect(const Ray& ray, const Vector3f& inv_dir, const std::array<int, 3>& dir_is_neg)
-{
-    // these lines below are just for compiling and can be deleted
-    (void)ray;
-    (void)inv_dir;
-    (void)dir_is_neg;
-    // these lines above are just for compiling and can be deleted
+bool AABB::intersect(const Ray& ray, const Vector3f& inv_dir, const std::array<int, 3>& dir_is_neg) {
+    // 检查射线起点是否在 AABB 内部
+    if (ray.origin.x() >= p_min.x() && ray.origin.x() <= p_max.x() &&
+        ray.origin.y() >= p_min.y() && ray.origin.y() <= p_max.y() &&
+        ray.origin.z() >= p_min.z() && ray.origin.z() <= p_max.z()) {
+        return true;
+    }
+
     float t_min = 0;
     float t_max = std::numeric_limits<float>::max();
-    for (int i=0;i<3;i++)
-    {
-        float t0 = (p_min[i] - ray.origin[i])*inv_dir[i];
-        float t1 = (p_max[i] - ray.origin[i])*inv_dir[i];
-        if (!dir_is_neg[i]) std::swap(t0, t1);
-        t_max = std::min(t1, t_max); 
-        t_min = std::max(t0, t_min);
-        if (t_max <= t_min) return false;
-    }
-    return true;
+    const float epsilon = 1e-6;
 
+    for (int i = 0; i < 3; i++) {
+        //printf("in aabb.intersect , i = %d\n",i);
+        if (std::abs(ray.direction[i]) < epsilon) {
+            // 射线平行于该轴，如果起点不在范围内，返回 false
+            if (ray.origin[i] < p_min[i] || ray.origin[i] > p_max[i]) {
+                return false;
+            }
+        } else {
+            float t0 = (p_min[i] - ray.origin[i]) * inv_dir[i];
+            float t1 = (p_max[i] - ray.origin[i]) * inv_dir[i];
+            if (!dir_is_neg[i]) std::swap(t0, t1);
+            t_max = std::min(t1, t_max);
+            t_min = std::max(t0, t_min);
+            if (t_max + epsilon <= t_min) return false;
+        }
+    }
+
+    return true;
 }
 // 获取当前图元对应AABB
 AABB get_aabb(const GL::Mesh& mesh, size_t face_idx)

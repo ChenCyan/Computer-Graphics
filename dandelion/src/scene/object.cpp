@@ -9,7 +9,7 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <fmt/format.h>
-
+#include <iostream>
 #include "../utils/math.hpp"
 #include "../utils/ray.h"
 #include "../simulation/solver.h"
@@ -23,7 +23,26 @@ using std::make_unique;
 using std::optional;
 using std::string;
 using std::vector;
+int j=0;
+/*void print_bvh_tree(BVHNode* node, int depth = 0) {
+    if (!node) return;
 
+    // 打印当前节点信息
+    std::string indent(depth * 2, ' '); // 缩进，表示层级关系
+    std::cout << indent << "Node at depth " << depth << "\n";
+    std::cout << indent << "  Face Index: " << node->face_idx << "\n";
+    std::cout << indent << "  AABB: [(" 
+              << node->aabb.p_min.x() << ", " << node->aabb.p_min.y() << ", " << node->aabb.p_min.z() << "), ("
+              << node->aabb.p_max.x() << ", " << node->aabb.p_max.y() << ", " << node->aabb.p_max.z() << ")]\n";
+
+    // 如果有子节点，继续递归打印
+    if (node->left || node->right) {
+        std::cout << indent << "  Left Child:\n";
+        print_bvh_tree(node->left, depth + 1);
+        std::cout << indent << "  Right Child:\n";
+        print_bvh_tree(node->right, depth + 1);
+    }
+}*/
 bool Object::BVH_for_collision   = false;
 size_t Object::next_available_id = 0;
 std::function<KineticState(const KineticState&, const KineticState&)> Object::step =
@@ -95,81 +114,51 @@ return change_matrix;
 
 void Object::update(vector<Object*>& all_objects)
 {
-    // 首先调用 step 函数计下一步该物体的运动学状态。
     KineticState current_state{center, velocity, force / mass};
     KineticState next_state = step(prev_state, current_state);
-    (void)next_state;
-    
     // 将物体的位置移动到下一步状态处，但暂时不要修改物体的速度。
-        this->center = next_state.position;
-    // 遍历 all_objects，检查该物体在下一步状态的位置处是否会与其他物体发生碰撞。
-    for (auto object : all_objects) {
-        (void)object;
-        //If the object is itself,skip the detection;
-        if (object == this) continue;
+    this->center = next_state.position;
 
-        // 检测该物体与另一物体是否碰撞的方法是：
-        // 遍历该物体的每一条边，构造与边重合的射线去和另一物体求交，如果求交结果非空、
-        // 相交处也在这条边的两个端点之间，那么该物体与另一物体发生碰撞。
-        // 请时刻注意：物体 mesh 顶点的坐标都在模型坐标系下，你需要先将其变换到世界坐标系。
+    // Check collision with other objects.
+    for (auto object : all_objects) {
+        if(object == this) continue;
+        
         for (size_t i = 0; i < mesh.edges.count(); ++i) {
             array<size_t, 2> v_indices = mesh.edge(i);
-            (void)v_indices;
-            // v_indices 中是这条边两个端点的索引，以这两个索引为参数调用 GL::Mesh::vertex
-            // 方法可以获得它们的坐标，进而用于构造射线。
-            Vector3f this_point1 = (this->model() * mesh.vertex(v_indices[0]).homogeneous()).hnormalized();
-            Vector3f this_point2 = (this->model() * mesh.vertex(v_indices[1]).homogeneous()).hnormalized();
-            //create the ray from piont1 to point2
-            Ray this_edge_ray = Ray{this_point1, (this_point2 - this_point1).normalized()};
+            Vector3f this_v0 = (this->model() * mesh.vertex(v_indices[0]).homogeneous()).hnormalized();
+            Vector3f this_v1 = (this->model() * mesh.vertex(v_indices[1]).homogeneous()).hnormalized();
 
-            if (BVH_for_collision) {
-                //this switch is built for BVH;
-                BVH bvh(mesh);
-                bvh.build();
-                /*optional<Intersection> intersection = bvh.intersect(this_edge_ray,object->mesh,object->model());
-                if (intersection.has_value())
-                {
-                    if (intersection->t <= (this_point2 - this_point1).norm())
-                    {
-                    intersection.t = object->model()* intersection.t;
-                    intersection.barycentric_coord = object->model()*intersection.barycentric_coord;
-                    intersection.normal = object->model()*intersection.normal;
-                    intersection.
-                    next_state.position = current_state.position;
+            Ray this_edge_ray = Ray{this_v0, (this_v1 - this_v0).normalized()};
+            std::optional<Intersection> intersection;
+            if (BVH_for_collision) intersection = object->bvh->intersect(this_edge_ray, object->mesh, object->model());
+            else intersection = naive_intersect(this_edge_ray, object->mesh, object->model());
+            
+            if(intersection != std::nullopt && intersection->t <= (this_v1 - this_v0).norm()){
+                next_state.position = current_state.position;
+                // 在碰撞过程中，为什么冲量 j_r ​是沿着法向 n 而不是沿着物体的运动方向
+                // 存在问题：当物体的速度，距离，以及刷新帧率满足一定条件时，交面的法向量会垂直于速度方向
+                // 从而导致冲量的方向与速度方向相反，这样会导致物体的速度变为0，从而无法继续运动
+                // 初步的分析是，这时候由于物体恰好接壤，因此此时作任意边到另一物体面的交点实际上都是不存在的
+                // 已解决：在鉴定存在碰撞后，next_state = step(current_state, next_state);
+                // 解决原因：TODO
 
-                    float impulse = -2.0f * (next_state.velocity - object->velocity).dot(intersection->normal) / (1 / mass + 1 / object->mass);
-                    next_state.velocity = next_state.velocity + (impulse / this->mass) * intersection->normal;
-                    object->velocity = object->velocity - (impulse / object->mass) * intersection->normal;
-                    break;
-                }
-                }*/
+                float impulse = -2.0f * (next_state.velocity - object->velocity).dot(intersection->normal) / (1 / mass + 1 / object->mass);
+                next_state.velocity = next_state.velocity + (impulse / this->mass) * intersection->normal;
+                object->velocity = object->velocity - (impulse / object->mass) * intersection->normal;
+
+                //next_state = step(current_state, next_state); // Amazing... Who can interpret it!!!
                 break;
-            } else {
-                //this switch is built for naive_intersect;
-                auto intersection = naive_intersect(this_edge_ray, object->mesh, object->model());
-                //if crash happenes
-                if (intersection.has_value() && intersection->t <= (this_point2 - this_point1).norm())
-                {
-                    next_state.position = current_state.position;
-
-                    float impulse = -2.0f * (next_state.velocity - object->velocity).dot(intersection->normal) / (1 / mass + 1 / object->mass);
-                    next_state.velocity = next_state.velocity + (impulse / this->mass) * intersection->normal;
-                    object->velocity = object->velocity - (impulse / object->mass) * intersection->normal;
-                    break;
-                }
-
             }
-            // 根据求交结果，判断该物体与另一物体是否发生了碰撞。
-            // 如果发生碰撞，按动量定理计算两个物体碰撞后的速度，并将下一步状态的位置设为
-            // current_state.position ，以避免重复碰撞。
         }
     }
     // 将上一步状态赋值为当前状态，并将物体更新到下一步状态。
+    this->center = next_state.position;
+    this->velocity = next_state.velocity;
     this->force = next_state.acceleration * mass;
     this->prev_state = current_state;
-    this->velocity = next_state.velocity;
-    
 }
+
+
 
 void Object::render(const Shader& shader, WorkingMode mode, bool selected)
 {
