@@ -9,7 +9,7 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <fmt/format.h>
-
+#include <iostream>
 #include "../utils/math.hpp"
 #include "../utils/ray.h"
 #include "../simulation/solver.h"
@@ -23,7 +23,26 @@ using std::make_unique;
 using std::optional;
 using std::string;
 using std::vector;
+int j=0;
+/*void print_bvh_tree(BVHNode* node, int depth = 0) {
+    if (!node) return;
 
+    // 打印当前节点信息
+    std::string indent(depth * 2, ' '); // 缩进，表示层级关系
+    std::cout << indent << "Node at depth " << depth << "\n";
+    std::cout << indent << "  Face Index: " << node->face_idx << "\n";
+    std::cout << indent << "  AABB: [(" 
+              << node->aabb.p_min.x() << ", " << node->aabb.p_min.y() << ", " << node->aabb.p_min.z() << "), ("
+              << node->aabb.p_max.x() << ", " << node->aabb.p_max.y() << ", " << node->aabb.p_max.z() << ")]\n";
+
+    // 如果有子节点，继续递归打印
+    if (node->left || node->right) {
+        std::cout << indent << "  Left Child:\n";
+        print_bvh_tree(node->left, depth + 1);
+        std::cout << indent << "  Right Child:\n";
+        print_bvh_tree(node->right, depth + 1);
+    }
+}*/
 bool Object::BVH_for_collision   = false;
 size_t Object::next_available_id = 0;
 std::function<KineticState(const KineticState&, const KineticState&)> Object::step =
@@ -43,32 +62,54 @@ Object::Object(const string& object_name)
     logger                   = get_logger(logger_name);
 }
 
-Matrix4f Object::model() {
-    Matrix4f scaleMatrix = Matrix4f::Identity();
-    Matrix4f rotationMatrix = Matrix4f::Identity();
-    Matrix4f translationMatrix = Matrix4f::Identity();
+Matrix4f Object::model()
+{
+Matrix4f translation_m = Matrix4f::Identity();
+translation_m(0, 3) = center(0);
+translation_m(1, 3) = center(1); 
+translation_m(2, 3) = center(2);
 
-    // Create the translation matrix
-    translationMatrix.block<3, 1>(0, 3) = center;
+Matrix4f scaling_m;
+scaling_m << scaling(0), 0, 0, 0,
+             0, scaling(1), 0, 0,
+             0, 0, scaling(2), 0,
+             0, 0, 0, 1;
 
-    // Create the scaling matrix
-    scaleMatrix(0, 0) = scaling.x();
-    scaleMatrix(1, 1) = scaling.y();
-    scaleMatrix(2, 2) = scaling.z();
- 
-    // Create the rotation matrix
-    const Quaternionf& r = rotation;
-    rotationMatrix.block<3, 3>(0, 0) = r.toRotationMatrix();
+const Quaternionf& r = rotation;
+auto [x_angle, y_angle, z_angle] = quaternion_to_ZYX_euler(r.w(), r.x(), r.y(), r.z());
 
-# ifdef DEBUG
-    // Output the matrix by using logger
-    logger->trace("scaling matrix: \n{}", scaleMatrix);
-    logger->trace("rotation matrix: \n{}", rotationMatrix);  
-    logger->trace("center matrix: \n{}", translationMatrix);
-# endif
+float x_angle_ra_cos = cos(radians(x_angle));
+float x_angle_ra_sin = sin(radians(x_angle));
+float y_angle_ra_cos = cos(radians(y_angle));
+float y_angle_ra_sin = sin(radians(y_angle));
+float z_angle_ra_cos = cos(radians(z_angle));
+float z_angle_ra_sin = sin(radians(z_angle));
 
-    Matrix4f modelMatrix = translationMatrix * rotationMatrix * scaleMatrix;
-    return modelMatrix;
+// 正确初始化 rotation_mx
+Matrix4f rotation_mx;
+rotation_mx << 1, 0, 0, 0,
+               0, x_angle_ra_cos, -x_angle_ra_sin, 0,
+               0, x_angle_ra_sin, x_angle_ra_cos, 0,
+               0, 0, 0, 1;
+
+// 正确初始化 rotation_my
+Matrix4f rotation_my;
+rotation_my << y_angle_ra_cos, 0, y_angle_ra_sin, 0,
+               0, 1, 0, 0,
+               -y_angle_ra_sin, 0, y_angle_ra_cos, 0,
+               0, 0, 0, 1;
+
+// 正确初始化 rotation_mz
+Matrix4f rotation_mz;
+rotation_mz << z_angle_ra_cos, -z_angle_ra_sin, 0, 0,
+               z_angle_ra_sin, z_angle_ra_cos, 0, 0,
+               0, 0, 1, 0,
+               0, 0, 0, 1;
+
+// 构建最终的变换矩阵
+Matrix4f change_matrix = translation_m * rotation_mx * rotation_my * rotation_mz * scaling_m;
+return change_matrix;
+
 }
 
 void Object::update(vector<Object*>& all_objects)
@@ -105,7 +146,7 @@ void Object::update(vector<Object*>& all_objects)
                 next_state.velocity = next_state.velocity + (impulse / this->mass) * intersection->normal;
                 object->velocity = object->velocity - (impulse / object->mass) * intersection->normal;
 
-                next_state = step(current_state, next_state); // Amazing... Who can interpret it!!!
+                //next_state = step(current_state, next_state); // Amazing... Who can interpret it!!!
                 break;
             }
         }
@@ -116,6 +157,8 @@ void Object::update(vector<Object*>& all_objects)
     this->force = next_state.acceleration * mass;
     this->prev_state = current_state;
 }
+
+
 
 void Object::render(const Shader& shader, WorkingMode mode, bool selected)
 {
