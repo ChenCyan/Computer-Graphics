@@ -25,14 +25,9 @@ Camera::Camera(const Eigen::Vector3f& position, const Eigen::Vector3f& target, f
 
 Matrix4f Camera::view()
 {
-    // Compute the inverted view direction, up and right vectors related to
-    // the camera itself.
     Vector3f inv_direction = (position - target).normalized();
     Vector3f right         = (world_up).cross(inv_direction).normalized();
     Vector3f up            = inv_direction.cross(right);
-    // The view matrix is multiplication of a rotation and a translation
-    // matrices: rotation represented by [right, up, inv_direction]^T and
-    // translation represented by -position.
     Matrix4f view_matrix          = Matrix4f::Identity();
     view_matrix.block<1, 3>(0, 0) = right;
     view_matrix.block<1, 3>(1, 0) = up;
@@ -45,25 +40,7 @@ Matrix4f Camera::view()
 
 Matrix4f Camera::projection()
 {
-    //////////////////////////////////////////////////////////////////////////////
-    // Following is the parallel projection matrix:                             //
-    //////////////////////////////////////////////////////////////////////////////
-    // const float fov_y = radians(fov_y_degrees);                              //
-    // const float top   = (target - position).norm() * std::tan(fov_y / 2.0f); //
-    // const float right = top * aspect_ratio;                                  //
-    //                                                                          //
-    // Matrix4f projection = Matrix4f::Zero();                                  //
-    // // 使用平行投影时，用户并不能从画面上直观地感受到相机的位置，                      //
-    // // 因而会产生近处物体裁剪过多的错觉。为了产程更好的观察效果，                      //
-    // // 这里没有使用相机本身的 near 而是取 near = -far 来让相机能看到“背后”的物体。    //
-    // projection(0, 0) = 1.0f / right;                                         //
-    // projection(1, 1) = 1.0f / top;                                           //
-    // projection(2, 2) = -1.0f / far;                                          //
-    // projection(2, 3) = 0.0f;                                                 //
-    // projection(3, 3) = 1.0f;                                                 //
-    //                                                                          //
-    // return projection;                                                       //
-    //////////////////////////////////////////////////////////////////////////////
+
 
     const float top = near_plane * std::tan(radians(fov_y_degrees) / 2);
     const float right = top * aspect_ratio;

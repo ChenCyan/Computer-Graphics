@@ -67,7 +67,7 @@ RasterizerRenderer::RasterizerRenderer(RenderEngine& engine, int num_vertex_thre
 // 光栅化渲染器的渲染调用接口
 void RasterizerRenderer::render(const Scene& scene)
 {
-    Uniforms::width       = static_cast<int>(width);
+        Uniforms::width       = static_cast<int>(width);
     Uniforms::height      = static_cast<int>(height);
     Context::frame_buffer = FrameBuffer(Uniforms::width, Uniforms::height);
     // clear Color Buffer & Depth Buffer & rendering_res
@@ -101,6 +101,14 @@ void RasterizerRenderer::render(const Scene& scene)
             Uniforms::width       = static_cast<int>(this->width);
             Uniforms::height      = static_cast<int>(this->height);
             // To do: 同步
+            // {
+            //     std::unique_lock<std::mutex> lock(Context::vertex_queue_mutex);
+            //     Context::vertex_shader_output_queue = std::queue<VertexShaderPayload>();
+            // }
+            // {
+            //     std::unique_lock<std::mutex> lock(Context::rasterizer_queue_mutex);
+            //     Context::rasterizer_output_queue = std::queue<FragmentShaderPayload>();
+            // }
             Uniforms::material = object->mesh.material;
             Uniforms::lights   = scene.lights;
             Uniforms::camera   = scene.camera;
@@ -158,10 +166,11 @@ void VertexProcessor::input_vertices(const Vector4f& positions, const Vector3f& 
 
 void VertexProcessor::worker_thread()
 {
-    while (true) {
+        while (true) {
         VertexShaderPayload payload;
         {
             if (vertex_queue.empty()) {
+                printf("\n"); // Avoid the loop optimization bug
                 continue;
             }
             std::unique_lock<std::mutex> lock(queue_mutex);
@@ -193,6 +202,7 @@ void FragmentProcessor::worker_thread()
                 return;
             }
             if (Context::rasterizer_output_queue.empty()) {
+                printf("\n"); // Avoid the loop optimization bug
                 continue;
             }
             std::unique_lock<std::mutex> lock(Context::rasterizer_queue_mutex);

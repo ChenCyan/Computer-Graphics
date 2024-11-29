@@ -296,22 +296,24 @@ void Scene::render(const Shader& shader, WorkingMode mode)
 
 void Scene::simulation_update()
 {
-    // 这次模拟的总时长不是上一帧的时长，而是上一帧时长与之前帧剩余时长的总和，
-    // 即上次调用 simulation_update 到现在过了多久。
-
-    // 以固定的时间步长 (time_step) 循环模拟物体运动，每模拟一步，模拟总时长就减去一个
-    // time_step ，当总时长不够一个 time_step 时停止模拟。
-
-    // 根据刚才模拟时间步的数量，更新最后一次调用 simulation_update 的时间 (last_update)。
-
-    auto sim_begin_clock = steady_clock::now();
-    auto duration_time = duration(sim_begin_clock - last_update).count();
-
-    while (duration_time > time_step) {
-        for (auto object : all_objects) object->update(all_objects);
-        duration_time -= time_step;
-    }
+    // 获取当前时间，作为模拟开始的时间点。
+    auto start_of_simulation = steady_clock::now();
     
-    last_update = sim_begin_clock - 
-                duration_cast<decltype(last_update)::duration>(duration(duration_time));
+    // 计算当前帧的时长：当前时间与上次更新时间之间的时间差，单位为秒。
+    auto elapsed_time = duration(start_of_simulation - last_update).count();
+
+    // 只要剩余时间大于一个时间步（time_step），就不断更新模拟。
+    // 这里使用while循环来确保模拟的更新次数。
+    while (elapsed_time > time_step) {
+        // 对场景中的每个物体进行一次更新。
+        for (auto obj : all_objects) {
+            obj->update(all_objects);
+        }
+        // 减去已处理的时间步，更新剩余时间。
+        elapsed_time -= time_step;
+    }
+
+    // 将当前时间减去剩余时间，得到下一帧的更新时间点。
+    last_update = start_of_simulation - 
+                duration_cast<decltype(last_update)::duration>(duration(elapsed_time));
 }

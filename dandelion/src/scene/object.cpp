@@ -112,51 +112,56 @@ return change_matrix;
 
 }
 
-void Object::update(vector<Object*>& all_objects)
+void Object::update(std::vector<Object*>& all_objects)
 {
-    KineticState current_state{center, velocity, force / mass};
-    KineticState next_state = step(prev_state, current_state);
-    // 将物体的位置移动到下一步状态处，但暂时不要修改物体的速度。
-    this->center = next_state.position;
+    // 获取当前状态与下一状态
+    KineticState current_status{center, velocity, force / mass};
+    KineticState next_status = step(prev_state, current_status);
 
-    // Check collision with other objects.
-    for (auto object : all_objects) {
-        if(object == this) continue;
-        
+    // 更新物体位置
+    this->center = next_status.position;
+
+    // 遍历所有物体检查碰撞
+    for (auto& obj : all_objects) {
+        if (obj == this) continue;
+
         for (size_t i = 0; i < mesh.edges.count(); ++i) {
-            array<size_t, 2> v_indices = mesh.edge(i);
-            Vector3f this_v0 = (this->model() * mesh.vertex(v_indices[0]).homogeneous()).hnormalized();
-            Vector3f this_v1 = (this->model() * mesh.vertex(v_indices[1]).homogeneous()).hnormalized();
+            auto edge_vertices = mesh.edge(i);
+            Vector3f vertex_start = (this->model() * mesh.vertex(edge_vertices[0]).homogeneous()).hnormalized();
+            Vector3f vertex_end = (this->model() * mesh.vertex(edge_vertices[1]).homogeneous()).hnormalized();
 
-            Ray this_edge_ray = Ray{this_v0, (this_v1 - this_v0).normalized()};
-            std::optional<Intersection> intersection;
-            if (BVH_for_collision) intersection = object->bvh->intersect(this_edge_ray, object->mesh, object->model());
-            else intersection = naive_intersect(this_edge_ray, object->mesh, object->model());
-            
-            if(intersection != std::nullopt && intersection->t <= (this_v1 - this_v0).norm()){
-                next_state.position = current_state.position;
-                // 在碰撞过程中，为什么冲量 j_r ​是沿着法向 n 而不是沿着物体的运动方向
-                // 存在问题：当物体的速度，距离，以及刷新帧率满足一定条件时，交面的法向量会垂直于速度方向
-                // 从而导致冲量的方向与速度方向相反，这样会导致物体的速度变为0，从而无法继续运动
-                // 初步的分析是，这时候由于物体恰好接壤，因此此时作任意边到另一物体面的交点实际上都是不存在的
-                // 已解决：在鉴定存在碰撞后，next_state = step(current_state, next_state);
-                // 解决原因：TODO
+            // 创建射线表示当前边
+            Ray edge_ray{vertex_start, (vertex_end - vertex_start).normalized()};
+            std::optional<Intersection> collision_point;
+            if (BVH_for_collision) {
+                collision_point = obj->bvh->intersect(edge_ray, obj->mesh, obj->model());
+            } else {
+                collision_point = naive_intersect(edge_ray, obj->mesh, obj->model());
+            }
 
-                float impulse = -2.0f * (next_state.velocity - object->velocity).dot(intersection->normal) / (1 / mass + 1 / object->mass);
-                next_state.velocity = next_state.velocity + (impulse / this->mass) * intersection->normal;
-                object->velocity = object->velocity - (impulse / object->mass) * intersection->normal;
+            // 如果发生碰撞，并且距离足够小
+            if (collision_point && collision_point->t <= (vertex_end - vertex_start).norm()) {
+                // 碰撞发生时重置位置并计算冲量
+                next_status.position = current_status.position;
 
-                //next_state = step(current_state, next_state); // Amazing... Who can interpret it!!!
+                // 计算冲量，沿法向量更新速度
+                float impulse_value = -2.0f * (next_status.velocity - obj->velocity).dot(collision_point->normal) / 
+                                      (1 / mass + 1 / obj->mass);
+                next_status.velocity += (impulse_value / this->mass) * collision_point->normal;
+                obj->velocity -= (impulse_value / obj->mass) * collision_point->normal;
+
                 break;
             }
         }
     }
-    // 将上一步状态赋值为当前状态，并将物体更新到下一步状态。
-    this->center = next_state.position;
-    this->velocity = next_state.velocity;
-    this->force = next_state.acceleration * mass;
-    this->prev_state = current_state;
+
+    // 更新物体的最终状态
+    this->center = next_status.position;
+    this->velocity = next_status.velocity;
+    this->force = next_status.acceleration * mass;
+    this->prev_state = current_status;
 }
+
 
 
 
