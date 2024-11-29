@@ -100,15 +100,6 @@ void RasterizerRenderer::render(const Scene& scene)
             Uniforms::inv_trans_M = object->model().inverse().transpose();
             Uniforms::width       = static_cast<int>(this->width);
             Uniforms::height      = static_cast<int>(this->height);
-            // To do: 同步
-            // {
-            //     std::unique_lock<std::mutex> lock(Context::vertex_queue_mutex);
-            //     Context::vertex_shader_output_queue = std::queue<VertexShaderPayload>();
-            // }
-            // {
-            //     std::unique_lock<std::mutex> lock(Context::rasterizer_queue_mutex);
-            //     Context::rasterizer_output_queue = std::queue<FragmentShaderPayload>();
-            // }
             Uniforms::material = object->mesh.material;
             Uniforms::lights   = scene.lights;
             Uniforms::camera   = scene.camera;
